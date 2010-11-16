@@ -1,12 +1,17 @@
+(function( jQuery ) {
+
 var jsc = jQuery.now(),
-	rscript = /<script(.|\s)*?\/script>/gi,
-	rselectTextarea = /select|textarea/i,
-	rinput = /color|date|datetime|email|hidden|month|number|password|range|search|tel|text|time|url|week/i,
+	rscript = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+	rselectTextarea = /^(?:select|textarea)/i,
+	rinput = /^(?:color|date|datetime|email|hidden|month|number|password|range|search|tel|text|time|url|week)$/i,
+	rnoContent = /^(?:GET|HEAD)$/,
+	rbracket = /\[\]$/,
 	jsre = /\=\?(&|$)/,
 	rquery = /\?/,
-	rts = /(\?|&)_=.*?(&|$)/,
+	rts = /([?&])_=[^&]*/,
 	rurl = /^(\w+:)?\/\/([^\/?#]+)/,
 	r20 = /%20/g,
+	rhash = /#.*$/,
 
 	// Keep a copy of the old load method
 	_load = jQuery.fn.load;
@@ -59,7 +64,7 @@ jQuery.fn.extend({
 					// See if a selector was specified
 					self.html( selector ?
 						// Create a dummy div to hold the results
-						jQuery("<div />")
+						jQuery("<div>")
 							// inject the contents of the document in, removing the scripts
 							// to avoid any 'Permission Denied' errors in IE
 							.append(res.responseText.replace(rscript, ""))
@@ -175,19 +180,10 @@ jQuery.extend({
 		password: null,
 		traditional: false,
 		*/
-		// Create the request object; Microsoft failed to properly
-		// implement the XMLHttpRequest in IE7 (can't request local files),
-		// so we use the ActiveXObject when it is available
 		// This function can be overriden by calling jQuery.ajaxSetup
-		xhr: window.XMLHttpRequest && (window.location.protocol !== "file:" || !window.ActiveXObject) ?
-			function() {
-				return new window.XMLHttpRequest();
-			} :
-			function() {
-				try {
-					return new window.ActiveXObject("Microsoft.XMLHTTP");
-				} catch(e) {}
-			},
+		xhr: function() {
+			return new window.XMLHttpRequest();
+		},
 		accepts: {
 			xml: "application/xml, text/xml",
 			html: "text/html",
@@ -200,9 +196,12 @@ jQuery.extend({
 
 	ajax: function( origSettings ) {
 		var s = jQuery.extend(true, {}, jQuery.ajaxSettings, origSettings),
-			jsonp, status, data, type = s.type.toUpperCase();
+			jsonp, status, data, type = s.type.toUpperCase(), noContent = rnoContent.test(type);
 
-		s.context = origSettings && origSettings.context || s;
+		s.url = s.url.replace( rhash, "" );
+
+		// Use original (not extended) context object if it was provided
+		s.context = origSettings && origSettings.context != null ? origSettings.context : s;
 
 		// convert data if not already a string
 		if ( s.data && s.processData && typeof s.data !== "string" ) {
@@ -237,17 +236,25 @@ jQuery.extend({
 			s.dataType = "script";
 
 			// Handle JSONP-style loading
-			window[ jsonp ] = window[ jsonp ] || function( tmp ) {
+			var customJsonp = window[ jsonp ];
+
+			window[ jsonp ] = function( tmp ) {
+				if ( jQuery.isFunction( customJsonp ) ) {
+					customJsonp( tmp );
+
+				} else {
+					// Garbage collect
+					window[ jsonp ] = undefined;
+
+					try {
+						delete window[ jsonp ];
+					} catch( jsonpError ) {}
+				}
+
 				data = tmp;
-				jQuery.ajax.handleSuccess( s, xhr, status, data );
-				jQuery.ajax.handleComplete( s, xhr, status, data );
-				// Garbage collect
-				window[ jsonp ] = undefined;
-
-				try {
-					delete window[ jsonp ];
-				} catch( jsonpError ) {}
-
+				jQuery.handleSuccess( s, xhr, status, data );
+				jQuery.handleComplete( s, xhr, status, data );
+				
 				if ( head ) {
 					head.removeChild( script );
 				}
@@ -258,39 +265,39 @@ jQuery.extend({
 			s.cache = false;
 		}
 
-		if ( s.cache === false && type === "GET" ) {
+		if ( s.cache === false && noContent ) {
 			var ts = jQuery.now();
 
 			// try replacing _= if it is there
-			var ret = s.url.replace(rts, "$1_=" + ts + "$2");
+			var ret = s.url.replace(rts, "$1_=" + ts);
 
 			// if nothing was replaced, add timestamp to the end
 			s.url = ret + ((ret === s.url) ? (rquery.test(s.url) ? "&" : "?") + "_=" + ts : "");
 		}
 
-		// If data is available, append data to url for get requests
-		if ( s.data && type === "GET" ) {
+		// If data is available, append data to url for GET/HEAD requests
+		if ( s.data && noContent ) {
 			s.url += (rquery.test(s.url) ? "&" : "?") + s.data;
 		}
 
 		// Watch for a new set of requests
-		if ( s.global && jQuery.ajax.active++ === 0 ) {
+		if ( s.global && jQuery.active++ === 0 ) {
 			jQuery.event.trigger( "ajaxStart" );
 		}
 
 		// Matches an absolute URL, and saves the domain
 		var parts = rurl.exec( s.url ),
-			remote = parts && (parts[1] && parts[1] !== location.protocol || parts[2] !== location.host);
+			remote = parts && (parts[1] && parts[1].toLowerCase() !== location.protocol || parts[2].toLowerCase() !== location.host);
 
 		// If we're requesting a remote document
 		// and trying to load JSON or Script with a GET
 		if ( s.dataType === "script" && type === "GET" && remote ) {
 			var head = document.getElementsByTagName("head")[0] || document.documentElement;
 			var script = document.createElement("script");
-			script.src = s.url;
 			if ( s.scriptCharset ) {
 				script.charset = s.scriptCharset;
 			}
+			script.src = s.url;
 
 			// Handle Script loading
 			if ( !jsonp ) {
@@ -301,8 +308,8 @@ jQuery.extend({
 					if ( !done && (!this.readyState ||
 							this.readyState === "loaded" || this.readyState === "complete") ) {
 						done = true;
-						jQuery.ajax.handleSuccess( s, xhr, status, data );
-						jQuery.ajax.handleComplete( s, xhr, status, data );
+						jQuery.handleSuccess( s, xhr, status, data );
+						jQuery.handleComplete( s, xhr, status, data );
 
 						// Handle memory leak in IE
 						script.onload = script.onreadystatechange = null;
@@ -340,8 +347,8 @@ jQuery.extend({
 
 		// Need an extra try/catch for cross domain requests in Firefox 3
 		try {
-			// Set the correct header, if data is being sent
-			if ( s.data || origSettings && origSettings.contentType ) {
+			// Set content-type if data specified and content-body is valid for this type
+			if ( (s.data != null && !noContent) || (origSettings && origSettings.contentType) ) {
 				xhr.setRequestHeader("Content-Type", s.contentType);
 			}
 
@@ -351,8 +358,8 @@ jQuery.extend({
 					xhr.setRequestHeader("If-Modified-Since", jQuery.lastModified[s.url]);
 				}
 
-				if ( jQuery.ajax.etag[s.url] ) {
-					xhr.setRequestHeader("If-None-Match", jQuery.ajax.etag[s.url]);
+				if ( jQuery.etag[s.url] ) {
+					xhr.setRequestHeader("If-None-Match", jQuery.etag[s.url]);
 				}
 			}
 
@@ -364,14 +371,14 @@ jQuery.extend({
 
 			// Set the Accepts header for the server, depending on the dataType
 			xhr.setRequestHeader("Accept", s.dataType && s.accepts[ s.dataType ] ?
-				s.accepts[ s.dataType ] + ", */*" :
+				s.accepts[ s.dataType ] + ", */*; q=0.01" :
 				s.accepts._default );
 		} catch( headerError ) {}
 
 		// Allow custom headers/mimetypes and early abort
 		if ( s.beforeSend && s.beforeSend.call(s.context, xhr, s) === false ) {
 			// Handle the global AJAX counter
-			if ( s.global && jQuery.ajax.active-- === 1 ) {
+			if ( s.global && jQuery.active-- === 1 ) {
 				jQuery.event.trigger( "ajaxStop" );
 			}
 
@@ -381,7 +388,7 @@ jQuery.extend({
 		}
 
 		if ( s.global ) {
-			jQuery.ajax.triggerGlobal( s, "ajaxSend", [xhr, s] );
+			jQuery.triggerGlobal( s, "ajaxSend", [xhr, s] );
 		}
 
 		// Wait for a response to come back
@@ -391,7 +398,7 @@ jQuery.extend({
 				// Opera doesn't call onreadystatechange before this point
 				// so we simulate the call
 				if ( !requestDone ) {
-					jQuery.ajax.handleComplete( s, xhr, status, data );
+					jQuery.handleComplete( s, xhr, status, data );
 				}
 
 				requestDone = true;
@@ -406,9 +413,9 @@ jQuery.extend({
 
 				status = isTimeout === "timeout" ?
 					"timeout" :
-					!jQuery.ajax.httpSuccess( xhr ) ?
+					!jQuery.httpSuccess( xhr ) ?
 						"error" :
-						s.ifModified && jQuery.ajax.httpNotModified( xhr, s.url ) ?
+						s.ifModified && jQuery.httpNotModified( xhr, s.url ) ?
 							"notmodified" :
 							"success";
 
@@ -418,7 +425,7 @@ jQuery.extend({
 					// Watch for, and catch, XML document parse errors
 					try {
 						// process the data (runs the xml through httpData regardless of callback)
-						data = jQuery.ajax.httpData( xhr, s.dataType, s );
+						data = jQuery.httpData( xhr, s.dataType, s );
 					} catch( parserError ) {
 						status = "parsererror";
 						errMsg = parserError;
@@ -429,14 +436,16 @@ jQuery.extend({
 				if ( status === "success" || status === "notmodified" ) {
 					// JSONP handles its own success callback
 					if ( !jsonp ) {
-						jQuery.ajax.handleSuccess( s, xhr, status, data );
+						jQuery.handleSuccess( s, xhr, status, data );
 					}
 				} else {
-					jQuery.ajax.handleError( s, xhr, status, errMsg );
+					jQuery.handleError( s, xhr, status, errMsg );
 				}
 
 				// Fire the complete handlers
-				jQuery.ajax.handleComplete( s, xhr, status, data );
+				if ( !jsonp ) {
+					jQuery.handleComplete( s, xhr, status, data );
+				}
 
 				if ( isTimeout === "timeout" ) {
 					xhr.abort();
@@ -449,13 +458,16 @@ jQuery.extend({
 			}
 		};
 
-		// Override the abort handler, if we can (IE doesn't allow it, but that's OK)
+		// Override the abort handler, if we can (IE 6 doesn't allow it, but that's OK)
 		// Opera doesn't fire onreadystatechange at all on abort
 		try {
 			var oldAbort = xhr.abort;
 			xhr.abort = function() {
 				if ( xhr ) {
-					oldAbort.call( xhr );
+					// oldAbort has no call property in IE7 so
+					// just do it this way, which works in all
+					// browsers
+					Function.prototype.call.call( oldAbort, xhr );
 				}
 
 				onreadystatechange( "abort" );
@@ -474,13 +486,13 @@ jQuery.extend({
 
 		// Send the data
 		try {
-			xhr.send( type === "POST" || type === "PUT" || type === "DELETE" ? s.data : null );
+			xhr.send( noContent || s.data == null ? null : s.data );
 
 		} catch( sendError ) {
-			jQuery.ajax.handleError( s, xhr, null, e );
+			jQuery.handleError( s, xhr, null, sendError );
 
 			// Fire the complete handlers
-			jQuery.ajax.handleComplete( s, xhr, status, data );
+			jQuery.handleComplete( s, xhr, status, data );
 		}
 
 		// firefox 1.5 doesn't fire statechange for sync requests
@@ -495,11 +507,12 @@ jQuery.extend({
 	// Serialize an array of form elements or a set of
 	// key/values into a query string
 	param: function( a, traditional ) {
-		var s = [], add = function( key, value ) {
-			// If value is a function, invoke it and return its value
-			value = jQuery.isFunction(value) ? value() : value;
-			s[ s.length ] = encodeURIComponent(key) + "=" + encodeURIComponent(value);
-		};
+		var s = [],
+			add = function( key, value ) {
+				// If value is a function, invoke it and return its value
+				value = jQuery.isFunction(value) ? value() : value;
+				s[ s.length ] = encodeURIComponent(key) + "=" + encodeURIComponent(value);
+			};
 		
 		// Set traditional to true for jQuery <= 1.3.2 behavior.
 		if ( traditional === undefined ) {
@@ -527,10 +540,10 @@ jQuery.extend({
 });
 
 function buildParams( prefix, obj, traditional, add ) {
-	if ( jQuery.isArray(obj) ) {
+	if ( jQuery.isArray(obj) && obj.length ) {
 		// Serialize array item.
 		jQuery.each( obj, function( i, v ) {
-			if ( traditional || /\[\]$/.test( prefix ) ) {
+			if ( traditional || rbracket.test( prefix ) ) {
 				// Treat each array item as a scalar.
 				add( prefix, v );
 
@@ -547,10 +560,15 @@ function buildParams( prefix, obj, traditional, add ) {
 		});
 			
 	} else if ( !traditional && obj != null && typeof obj === "object" ) {
+		if ( jQuery.isEmptyObject( obj ) ) {
+			add( prefix, "" );
+
 		// Serialize object item.
-		jQuery.each( obj, function( k, v ) {
-			buildParams( prefix + "[" + k + "]", v, traditional, add );
-		});
+		} else {
+			jQuery.each( obj, function( k, v ) {
+				buildParams( prefix + "[" + k + "]", v, traditional, add );
+			});
+		}
 					
 	} else {
 		// Serialize scalar item.
@@ -558,7 +576,9 @@ function buildParams( prefix, obj, traditional, add ) {
 	}
 }
 
-jQuery.extend( jQuery.ajax, {
+// This is still on the jQuery object... for now
+// Want to move this to jQuery.ajax some day
+jQuery.extend({
 
 	// Counter for holding the number of active queries
 	active: 0,
@@ -575,7 +595,7 @@ jQuery.extend( jQuery.ajax, {
 
 		// Fire the global callback
 		if ( s.global ) {
-			jQuery.ajax.triggerGlobal( s, "ajaxError", [xhr, s, e] );
+			jQuery.triggerGlobal( s, "ajaxError", [xhr, s, e] );
 		}
 	},
 
@@ -587,7 +607,7 @@ jQuery.extend( jQuery.ajax, {
 
 		// Fire the global callback
 		if ( s.global ) {
-			jQuery.ajax.triggerGlobal( s, "ajaxSuccess", [xhr, s] );
+			jQuery.triggerGlobal( s, "ajaxSuccess", [xhr, s] );
 		}
 	},
 
@@ -599,11 +619,11 @@ jQuery.extend( jQuery.ajax, {
 
 		// The request was completed
 		if ( s.global ) {
-			jQuery.ajax.triggerGlobal( s, "ajaxComplete", [xhr, s] );
+			jQuery.triggerGlobal( s, "ajaxComplete", [xhr, s] );
 		}
 
 		// Handle the global AJAX counter
-		if ( s.global && jQuery.ajax.active-- === 1 ) {
+		if ( s.global && jQuery.active-- === 1 ) {
 			jQuery.event.trigger( "ajaxStop" );
 		}
 	},
@@ -617,9 +637,8 @@ jQuery.extend( jQuery.ajax, {
 		try {
 			// IE error sometimes returns 1223 when it should be 204 so treat it as success, see #1450
 			return !xhr.status && location.protocol === "file:" ||
-				// Opera returns 0 when status is 304
-				( xhr.status >= 200 && xhr.status < 300 ) ||
-				xhr.status === 304 || xhr.status === 1223 || xhr.status === 0;
+				xhr.status >= 200 && xhr.status < 300 ||
+				xhr.status === 304 || xhr.status === 1223;
 		} catch(e) {}
 
 		return false;
@@ -631,15 +650,14 @@ jQuery.extend( jQuery.ajax, {
 			etag = xhr.getResponseHeader("Etag");
 
 		if ( lastModified ) {
-			jQuery.ajax.lastModified[url] = lastModified;
+			jQuery.lastModified[url] = lastModified;
 		}
 
 		if ( etag ) {
-			jQuery.ajax.etag[url] = etag;
+			jQuery.etag[url] = etag;
 		}
 
-		// Opera returns 0 when status is 304
-		return xhr.status === 304 || xhr.status === 0;
+		return xhr.status === 304;
 	},
 
 	httpData: function( xhr, type, s ) {
@@ -674,5 +692,28 @@ jQuery.extend( jQuery.ajax, {
 
 });
 
-// For backwards compatibility
-jQuery.extend( jQuery.ajax );
+/*
+ * Create the request object; Microsoft failed to properly
+ * implement the XMLHttpRequest in IE7 (can't request local files),
+ * so we use the ActiveXObject when it is available
+ * Additionally XMLHttpRequest can be disabled in IE7/IE8 so
+ * we need a fallback.
+ */
+if ( window.ActiveXObject ) {
+	jQuery.ajaxSettings.xhr = function() {
+		if ( window.location.protocol !== "file:" ) {
+			try {
+				return new window.XMLHttpRequest();
+			} catch(xhrError) {}
+		}
+
+		try {
+			return new window.ActiveXObject("Microsoft.XMLHTTP");
+		} catch(activeError) {}
+	};
+}
+
+// Does this browser support XHR requests?
+jQuery.support.ajax = !!jQuery.ajaxSettings.xhr();
+
+})( jQuery );

@@ -1,5 +1,25 @@
 module("event");
 
+test("null or undefined handler", function() {
+	expect(2);
+  // Supports Fixes bug #7229
+  try {
+  
+    jQuery("#firstp").click(null);
+  
+    ok(true, "Passing a null handler will not throw an exception");
+
+  } catch (e) {}  
+
+  try {
+  
+    jQuery("#firstp").click(undefined);
+  
+    ok(true, "Passing an undefined handler will not throw an exception");
+
+  } catch (e) {}  
+});
+
 test("bind(), with data", function() {
 	expect(3);
 	var handler = function(event) {
@@ -206,6 +226,75 @@ test("bind/one/unbind(Object)", function(){
 	equals( mouseoverCounter, 4, "bind(Object)" );
 });
 
+test("live/die(Object), delegate/undelegate(String, Object)", function() {
+	expect(6);
+	
+	var clickCounter = 0, mouseoverCounter = 0,
+		$p = jQuery("#firstp"), $a = $p.find("a:first");
+	
+	var events = {
+		click: function( event ) {
+			clickCounter += ( event.data || 1 );
+		},
+		mouseover: function( event ) {
+			mouseoverCounter += ( event.data || 1 );
+		}
+	};
+	
+	function trigger() {
+		$a.trigger("click").trigger("mouseover");
+	}
+	
+	$a.live( events );
+	$p.delegate( "a", events, 2 );
+	
+	trigger();
+	equals( clickCounter, 3, "live/delegate" );
+	equals( mouseoverCounter, 3, "live/delegate" );
+	
+	$p.undelegate( "a", events );
+	
+	trigger();
+	equals( clickCounter, 4, "undelegate" );
+	equals( mouseoverCounter, 4, "undelegate" );
+	
+	$a.die( events );
+	
+	trigger();
+	equals( clickCounter, 4, "die" );
+	equals( mouseoverCounter, 4, "die" );
+});
+
+test("live/delegate immediate propagation", function() {
+	expect(2);
+	
+	var $p = jQuery("#firstp"), $a = $p.find("a:first"), lastClick;
+	
+	lastClick = "";
+	$a.live( "click", function(e) { 
+		lastClick = "click1"; 
+		e.stopImmediatePropagation();
+	});
+	$a.live( "click", function(e) {
+		lastClick = "click2";
+	});
+	$a.trigger( "click" );
+	equals( lastClick, "click1", "live stopImmediatePropagation" );
+	$a.die( "click" );
+	
+	lastClick = "";
+	$p.delegate( "a", "click", function(e) { 
+		lastClick = "click1"; 
+		e.stopImmediatePropagation();
+	});
+	$p.delegate( "a", "click", function(e) {
+		lastClick = "click2";
+	});
+	$a.trigger( "click" );
+	equals( lastClick, "click1", "delegate stopImmediatePropagation" );
+	$p.undelegate( "click" );
+});
+
 test("bind(), iframes", function() {
 	// events don't work with iframes, see #939 - this test fails in IE because of contentDocument
 	var doc = jQuery("#loadediframe").contents();
@@ -216,7 +305,7 @@ test("bind(), iframes", function() {
 });
 
 test("bind(), trigger change on select", function() {
-	expect(3);
+	expect(5);
 	var counter = 0;
 	function selectOnChange(event) {
 		equals( event.data, counter++, "Event.data is not a global event object" );
@@ -404,7 +493,7 @@ test("bind(name, false), unbind(name, false)", function() {
 });
 
 test("bind()/trigger()/unbind() on plain object", function() {
-	expect( 2 );
+	expect( 7 );
 
 	var obj = {};
 
@@ -418,7 +507,12 @@ test("bind()/trigger()/unbind() on plain object", function() {
 		ok( true, "Custom event run." );
 	});
 
-	ok( jQuery(obj).data("events"), "Object has events bound." );
+	var events = jQuery(obj).data("__events__");
+	ok( events, "Object has events bound." );
+	equals( obj.events, undefined, "Events object on plain objects is not events" );
+	equals( typeof events, "function", "'events' expando is a function on plain objects." );
+	equals( obj.test, undefined, "Make sure that test event is not on the plain object." );
+	equals( obj.handle, undefined, "Make sure that the event handler is not on the plain object." );
 
 	// Should trigger 1
 	jQuery(obj).trigger("test");
@@ -430,6 +524,8 @@ test("bind()/trigger()/unbind() on plain object", function() {
 
 	// Make sure it doesn't complain when no events are found
 	jQuery(obj).unbind("test");
+	
+	equals( obj.__events__, undefined, "Make sure events object is removed" );
 });
 
 test("unbind(type)", function() {
@@ -1192,6 +1288,8 @@ test("live with namespaces", function(){
 });
 
 test("live with change", function(){
+	expect(8);
+
 	var selectChange = 0, checkboxChange = 0;
 	
 	var select = jQuery("select[name='S1']")
@@ -1223,28 +1321,13 @@ test("live with change", function(){
 	checkbox.trigger("change");
 	equals( checkboxChange, 1, "Change on checkbox." );
 	
-	// test before activate on radio
-	
-	// test blur/focus on textarea
-	var textarea = jQuery("#area1"), textareaChange = 0, oldVal = textarea.val();
-	textarea.live("change", function() {
-		textareaChange++;
-	});
-
-	textarea.val(oldVal + "foo");
-	textarea.trigger("change");
-	equals( textareaChange, 1, "Change on textarea." );
-
-	textarea.val(oldVal);
-	textarea.die("change");
-	
 	// test blur/focus on text
 	var text = jQuery("#name"), textChange = 0, oldTextVal = text.val();
 	text.live("change", function() {
 		textChange++;
 	});
 
-	text.val(oldVal+"foo");
+	text.val(oldTextVal+"foo");
 	text.trigger("change");
 	equals( textChange, 1, "Change on text input." );
 
@@ -1661,6 +1744,8 @@ test("delegate with multiple events", function(){
 });
 
 test("delegate with change", function(){
+	expect(8);
+
 	var selectChange = 0, checkboxChange = 0;
 	
 	var select = jQuery("select[name='S1']");
@@ -1692,28 +1777,13 @@ test("delegate with change", function(){
 	checkbox.trigger("change");
 	equals( checkboxChange, 1, "Change on checkbox." );
 	
-	// test before activate on radio
-	
-	// test blur/focus on textarea
-	var textarea = jQuery("#area1"), textareaChange = 0, oldVal = textarea.val();
-	jQuery("#body").delegate("#area1", "change", function() {
-		textareaChange++;
-	});
-
-	textarea.val(oldVal + "foo");
-	textarea.trigger("change");
-	equals( textareaChange, 1, "Change on textarea." );
-
-	textarea.val(oldVal);
-	jQuery("#body").undelegate("#area1", "change");
-	
 	// test blur/focus on text
 	var text = jQuery("#name"), textChange = 0, oldTextVal = text.val();
 	jQuery("#body").delegate("#name", "change", function() {
 		textChange++;
 	});
 
-	text.val(oldVal+"foo");
+	text.val(oldTextVal+"foo");
 	text.trigger("change");
 	equals( textChange, 1, "Change on text input." );
 
@@ -1784,6 +1854,38 @@ test("Non DOM element events", function() {
 	});
 
 	jQuery(o).trigger('nonelementobj');
+});
+
+test("window resize", function() {
+	expect(2);
+
+	jQuery(window).unbind();
+
+	jQuery(window).bind("resize", function(){
+		ok( true, "Resize event fired." );
+	}).resize().unbind("resize");
+
+	ok( !jQuery(window).data("__events__"), "Make sure all the events are gone." );
+});
+
+test("focusin bubbles", function() {
+	//create an input and focusin on it
+	var input = jQuery("<input/>"), order = 0;
+
+	input.prependTo("body");
+
+	jQuery("body").bind("focusin.focusinBubblesTest",function(){
+		equals(1,order++,"focusin on the body second")
+	});
+
+	input.bind("focusin.focusinBubblesTest",function(){
+		equals(0,order++,"focusin on the element first")
+	});
+
+	input[0].focus();
+	input.remove();
+
+	jQuery("body").unbind("focusin.focusinBubblesTest");
 });
 
 /*

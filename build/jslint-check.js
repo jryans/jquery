@@ -2,7 +2,7 @@ load("build/jslint.js");
 
 var src = readFile("dist/jquery.js");
 
-JSLINT(src, { evil: true, forin: true });
+JSLINT(src, { evil: true, forin: true, maxerr: 100 });
 
 // All of the following are known issues that we think are 'ok'
 // (in contradiction with JSLint) more information here:
@@ -12,8 +12,8 @@ var ok = {
 	"Use '===' to compare with 'null'.": true,
 	"Use '!==' to compare with 'null'.": true,
 	"Expected an assignment or function call and instead saw an expression.": true,
-	"Expected a 'break' statement before 'case'.": true
-
+	"Expected a 'break' statement before 'case'.": true,
+	"'e' is already defined.": true
 };
 
 var e = JSLINT.errors, found = 0, w;

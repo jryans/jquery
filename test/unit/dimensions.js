@@ -9,7 +9,7 @@ function fn( val ) {
 }
 
 function testWidth( val ) {
-	expect(7);
+	expect(8);
 
 	var $div = jQuery("#nothiddendiv");
 	$div.width( val(30) );
@@ -32,6 +32,7 @@ function testWidth( val ) {
 
 	var blah = jQuery("blah");
 	equals( blah.width( val(10) ), blah, "Make sure that setting a width on an empty set returns the set." );
+	equals( blah.width(), null, "Make sure 'null' is returned on an empty set");
 }
 
 test("width()", function() {
@@ -55,7 +56,7 @@ test("width() with function args", function() {
 });
 
 function testHeight( val ) {
-	expect(6);
+	expect(8);
 
 	var $div = jQuery("#nothiddendiv");
 	$div.height( val(30) );
@@ -72,15 +73,20 @@ function testHeight( val ) {
 
 	$div.css({ display: "", border: "", padding: "", height: "1px" });
 
+	jQuery("#nothiddendivchild").css({ height: 20, padding: "3px", border: "2px solid #fff" });
+	equals(jQuery("#nothiddendivchild").height(), 20, "Test child height with border and padding");
+	jQuery("#nothiddendiv, #nothiddendivchild").css({ border: "", padding: "", height: "" });
+
 	var blah = jQuery("blah");
 	equals( blah.height( val(10) ), blah, "Make sure that setting a height on an empty set returns the set." );
+	equals( blah.height(), null, "Make sure 'null' is returned on an empty set");
 }
 
 test("height()", function() {
 	testHeight( pass );
 });
 
-test("width() with function", function() {
+test("height() with function", function() {
 	testHeight( fn );
 });
 
@@ -97,7 +103,7 @@ test("height() with function args", function() {
 });
 
 test("innerWidth()", function() {
-	expect(3);
+	expect(4);
 
 	var $div = jQuery("#nothiddendiv");
 	// set styles
@@ -115,10 +121,15 @@ test("innerWidth()", function() {
 	
 	// reset styles
 	$div.css({ display: "", border: "", padding: "", width: "", height: "" });
+
+	var div = jQuery( "<div>" );
+
+	// Temporarily require 0 for backwards compat - should be auto
+	equals( div.innerWidth(), 0, "Make sure that disconnected nodes are handled." );
 });
 
 test("innerHeight()", function() {
-	expect(3);
+	expect(4);
 	
 	var $div = jQuery("#nothiddendiv");
 	// set styles
@@ -136,10 +147,15 @@ test("innerHeight()", function() {
 	
 	// reset styles
 	$div.css({ display: "", border: "", padding: "", width: "", height: "" });
+
+	var div = jQuery( "<div>" );
+
+	// Temporarily require 0 for backwards compat - should be auto
+	equals( div.innerHeight(), 0, "Make sure that disconnected nodes are handled." );
 });
 
 test("outerWidth()", function() {
-	expect(6);
+	expect(7);
 	
 	var $div = jQuery("#nothiddendiv");
 	$div.css("width", 30);
@@ -158,10 +174,15 @@ test("outerWidth()", function() {
 	
 	// reset styles
 	$div.css({ position: "", display: "", border: "", padding: "", width: "", height: "" });
+
+	var div = jQuery( "<div>" );
+
+	// Temporarily require 0 for backwards compat - should be auto
+	equals( div.outerWidth(), 0, "Make sure that disconnected nodes are handled." );
 });
 
 test("outerHeight()", function() {
-	expect(6);
+	expect(7);
 	
 	var $div = jQuery("#nothiddendiv");
 	$div.css("height", 30);
@@ -179,4 +200,9 @@ test("outerHeight()", function() {
 	
 	// reset styles
 	$div.css({ display: "", border: "", padding: "", width: "", height: "" });
+
+	var div = jQuery( "<div>" );
+
+	// Temporarily require 0 for backwards compat - should be auto
+	equals( div.outerHeight(), 0, "Make sure that disconnected nodes are handled." );
 });

@@ -4,7 +4,7 @@ var bareObj = function(value) { return value; };
 var functionReturningObj = function(value) { return (function() { return value; }); };
 
 test("attr(String)", function() {
-	expect(30);
+	expect(31);
 
 	// This one sometimes fails randomly ?!
 	equals( jQuery('#text1').attr('value'), "Test", 'Check for value attribute' );
@@ -30,7 +30,8 @@ test("attr(String)", function() {
 	equals( jQuery('#foo').attr('nodeName').toUpperCase(), 'DIV', 'Check for nodeName attribute' );
 	equals( jQuery('#foo').attr('tagName').toUpperCase(), 'DIV', 'Check for tagName attribute' );
 
-	jQuery('<a id="tAnchor5"></a>').attr('href', '#5').appendTo('#main'); // using innerHTML in IE causes href attribute to be serialized to the full path
+	// using innerHTML in IE causes href attribute to be serialized to the full path
+	jQuery('<a/>').attr({ 'id': 'tAnchor5', 'href': '#5' }).appendTo('#main');
 	equals( jQuery('#tAnchor5').attr('href'), "#5", 'Check for non-absolute href (an anchor)' );
 
 	equals( jQuery("<option/>").attr("selected"), false, "Check selected attribute on disconnected element." );
@@ -64,6 +65,8 @@ test("attr(String)", function() {
 
 	ok( jQuery("<div/>").attr("doesntexist") === undefined, "Make sure undefined is returned when no attribute is found." );
 	ok( jQuery().attr("doesntexist") === undefined, "Make sure undefined is returned when no element is there." );
+
+	equals( jQuery(document).attr("nodeName"), "#document", "attr works correctly on document nodes (bug #7451)." );
 });
 
 if ( !isLocal ) {
@@ -97,15 +100,18 @@ test("attr(Hash)", function() {
 });
 
 test("attr(String, Object)", function() {
-	expect(23);
+	expect(24);
+
 	var div = jQuery("div").attr("foo", "bar"),
 		fail = false;
+
 	for ( var i = 0; i < div.size(); i++ ) {
 		if ( div.get(i).getAttribute('foo') != "bar" ){
 			fail = i;
 			break;
 		}
 	}
+
 	equals( fail, false, "Set Attribute, the #"+fail+" element didn't get the attribute 'foo'" );
 
 	// Fails on IE since recent changes to .attr()
@@ -113,6 +119,8 @@ test("attr(String, Object)", function() {
 
 	jQuery("#name").attr('name', 'something');
 	equals( jQuery("#name").attr('name'), 'something', 'Set name attribute' );
+	jQuery("#name").attr('name', null);
+	equals( jQuery("#name").attr('title'), '', 'Remove name attribute' );
 	jQuery("#check2").attr('checked', true);
 	equals( document.getElementById('check2').checked, true, 'Set checked attribute' );
 	jQuery("#check2").attr('checked', false);
@@ -150,7 +158,7 @@ test("attr(String, Object)", function() {
 	equals( j.attr("name"), "attrvalue", "Check node,textnode,comment for attr" );
 	j.removeAttr("name");
 
-	reset();
+	QUnit.reset();
 
 	var type = jQuery("#check2").attr('type');
 	var thrown = false;
@@ -301,12 +309,12 @@ test("removeAttr(String)", function() {
 });
 
 test("val()", function() {
-	expect(17);
+	expect(23);
 
 	document.getElementById('text1').value = "bla";
 	equals( jQuery("#text1").val(), "bla", "Check for modified value of input element" );
 
-	reset();
+	QUnit.reset();
 
 	equals( jQuery("#text1").val(), "Test", "Check for value of input element" );
 	// ticket #1714 this caused a JS error in IE
@@ -328,10 +336,23 @@ test("val()", function() {
 	jQuery('#select3').val("");
 	same( jQuery('#select3').val(), [''], 'Call val() on a multiple="multiple" select' );
 
-	var checks = jQuery("<input type='checkbox' name='test' value='1'/>").appendTo("#form")
-		.add( jQuery("<input type='checkbox' name='test' value='2'/>").appendTo("#form") )
-		.add( jQuery("<input type='checkbox' name='test' value=''/>").appendTo("#form") )
-		.add( jQuery("<input type='checkbox' name='test'/>").appendTo("#form") );
+	same( jQuery('#select4').val(), [], 'Call val() on multiple="multiple" select with all disabled options' );
+
+	jQuery('#select4 optgroup').add('#select4 > [disabled]').attr('disabled', false);
+	same( jQuery('#select4').val(), ['2', '3'], 'Call val() on multiple="multiple" select with some disabled options' );
+
+	jQuery('#select4').attr('disabled', true);
+	same( jQuery('#select4').val(), ['2', '3'], 'Call val() on disabled multiple="multiple" select' );
+
+	equals( jQuery('#select5').val(), "3", "Check value on ambiguous select." );
+
+	jQuery('#select5').val(1);
+	equals( jQuery('#select5').val(), "1", "Check value on ambiguous select." );
+
+	jQuery('#select5').val(3);
+	equals( jQuery('#select5').val(), "3", "Check value on ambiguous select." );
+
+	var checks = jQuery("<input type='checkbox' name='test' value='1'/><input type='checkbox' name='test' value='2'/><input type='checkbox' name='test' value=''/><input type='checkbox' name='test'/>").appendTo("#form");
 
 	same( checks.serialize(), "", "Get unchecked values." );
 
@@ -353,13 +374,19 @@ test("val()", function() {
 });
 
 var testVal = function(valueObj) {
-	expect(6);
+	expect(8);
 
 	jQuery("#text1").val(valueObj( 'test' ));
 	equals( document.getElementById('text1').value, "test", "Check for modified (via val(String)) value of input element" );
 
+	jQuery("#text1").val(valueObj( undefined ));
+	equals( document.getElementById('text1').value, "", "Check for modified (via val(undefined)) value of input element" );
+
 	jQuery("#text1").val(valueObj( 67 ));
 	equals( document.getElementById('text1').value, "67", "Check for modified (via val(Number)) value of input element" );
+
+	jQuery("#text1").val(valueObj( null ));
+	equals( document.getElementById('text1').value, "", "Check for modified (via val(null)) value of input element" );
 
 	jQuery("#select1").val(valueObj( "3" ));
 	equals( jQuery("#select1").val(), "3", "Check for modified (via val(String)) value of select element" );
@@ -384,7 +411,19 @@ test("val(String/Number)", function() {
 
 test("val(Function)", function() {
 	testVal(functionReturningObj);
-})
+});
+
+test( "val(Array of Numbers) (Bug #7123)", function() {
+	expect(4);
+	jQuery('#form').append('<input type="checkbox" name="arrayTest" value="1" /><input type="checkbox" name="arrayTest" value="2" /><input type="checkbox" name="arrayTest" value="3" checked="checked" /><input type="checkbox" name="arrayTest" value="4" />');
+	var elements = jQuery('input[name=arrayTest]').val([ 1, 2 ]);
+	ok( elements[0].checked, "First element was checked" );
+	ok( elements[1].checked, "Second element was checked" );
+	ok( !elements[2].checked, "Third element was unchecked" );
+	ok( !elements[3].checked, "Fourth element remained unchecked" );
+	
+	elements.remove();
+});
 
 test("val(Function) with incoming value", function() {
 	expect(10);
@@ -475,7 +514,7 @@ test("addClass(Function)", function() {
 });
 
 test("addClass(Function) with incoming value", function() {
-	expect(39);
+	expect(45);
 
 	var div = jQuery("div"), old = div.map(function(){
 		return jQuery(this).attr("class");
@@ -504,7 +543,7 @@ var testRemoveClass = function(valueObj) {
 
 	ok( !$divs.is('.test'), "Remove Class" );
 
-	reset();
+	QUnit.reset();
 	$divs = jQuery('div');
 
 	$divs.addClass("test").addClass("foo").addClass("bar");
@@ -512,7 +551,7 @@ var testRemoveClass = function(valueObj) {
 
 	ok( !$divs.is('.test,.bar,.foo'), "Remove multiple classes" );
 
-	reset();
+	QUnit.reset();
 	$divs = jQuery('div');
 
 	// Make sure that a null value doesn't cause problems
@@ -548,7 +587,7 @@ test("removeClass(Function) - simple", function() {
 });
 
 test("removeClass(Function) with incoming value", function() {
-	expect(39);
+	expect(45);
 
 	var $divs = jQuery('div').addClass("test"), old = $divs.map(function(){
 		return jQuery(this).attr("class");
@@ -563,7 +602,7 @@ test("removeClass(Function) with incoming value", function() {
 
 	ok( !$divs.is('.test'), "Remove Class" );
 
-	reset();	
+	QUnit.reset();	
 });
 
 var testToggleClass = function(valueObj) {
